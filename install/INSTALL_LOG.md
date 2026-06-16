@@ -4017,3 +4017,64 @@ Stacktrace:
     - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_cross_section.png`
     - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_cross_section.svg`
     - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_plasma_proxy.step`
+
+## Phase 4 TORAX reporting completion on 2026-06-16
+
+- No GPU, ROCm, driver, ComfyUI, or image-generation installs were changed.
+- No new package installation was performed.
+- Updated `src/mini_tokamak/reporting/plots.py`:
+  - Added `plot_torax_transport_comparison`.
+  - Generates `torax_transport_comparison.png` only when TORAX has executed at least one candidate.
+  - Compares top-candidate q95, SOL heat-load proxy, and line-averaged Greenwald fraction against MVP warning/fail thresholds.
+- Updated `src/mini_tokamak/reporting/report_md.py`:
+  - Expanded the `TORAX Transport Summary` table with ranked candidate order and dominant TORAX comparison reason.
+  - Keeps TORAX results labelled as low-fidelity comparison evidence, not viability claims.
+- Added `tests/test_torax_reporting.py`:
+  - Verifies TORAX comparison plot generation from synthetic executed results.
+  - Verifies the ranked TORAX comparison table appears in Markdown reports.
+- Updated docs:
+  - `README.md` now documents the TORAX batch comparison plot.
+  - `docs/ROADMAP.md` marks the Phase 4 MVP as complete and keeps high-fidelity calibration/validation as future work.
+- Validation commands completed:
+  - Windows: `.venv\Scripts\python.exe -m pytest`
+    - Result: `30 passed`
+  - Windows: `.venv\Scripts\python.exe -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `python -m pytest`
+    - Result: `30 passed`
+  - WSL: `python -m ruff check src tests`
+    - Result: `All checks passed`
+- Phase 4 completion smoke with multiple TORAX executions:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 5 --mode random --seed 44 --torax-top-n 3`
+  - Run ID: `20260616T074603Z-65dd17b5`
+  - Result: command completed successfully in WSL.
+  - Screening completed first, then the `TORAX transport pass` executed 3 ranked candidates.
+  - Candidate results: 5 JSON result files.
+  - TORAX artifacts:
+    - 5 `torax_manifest.json`
+    - 5 `torax_config.py`
+    - 3 TORAX `state_history_*.nc` files for the top 3 candidates only
+  - TORAX solver status summary:
+    - 3 candidates: `WARNING`, stage `run_torax`
+    - 2 candidates: `NOT_EVALUATED`
+  - Executed TORAX comparison summary from the report:
+    - Rank 1 `b5151aa5`: q95 `5.05`, fGW line `0.0524`, P_SOL `15.5 MW`, SOL heat load `30.5 MW/m2`, comparison `FAIL`
+    - Rank 2 `556a9a79`: q95 `3.16`, fGW line `0.0918`, P_SOL `43 MW`, SOL heat load `58 MW/m2`, comparison `FAIL`
+    - Rank 3 `3a4c84a0`: q95 `7.52`, fGW line `0.0592`, P_SOL `43 MW`, SOL heat load `103 MW/m2`, comparison `FAIL`
+  - Report artifacts:
+    - `data/reports/20260616T074603Z-65dd17b5/report.md`
+    - `data/reports/20260616T074603Z-65dd17b5/report.html`
+  - Plot artifacts:
+    - `data/runs/20260616T074603Z-65dd17b5/plots/score_vs_major_radius.png`
+    - `data/runs/20260616T074603Z-65dd17b5/plots/dominant_failure_counts.png`
+    - `data/runs/20260616T074603Z-65dd17b5/plots/torax_transport_comparison.png`
+- Phase 4 MVP completion status:
+  - TORAX install verified.
+  - Per-candidate config generation verified.
+  - Controlled low-fidelity profile/source model implemented.
+  - Opt-in single-candidate TORAX execution verified.
+  - Ranked `--torax-top-n` execution verified.
+  - TORAX output extraction verified.
+  - q95, Greenwald, beta, and heat-exhaust comparisons implemented.
+  - Batch TORAX report table and comparison plot implemented.
+  - Missing/heavy-tool fallback behavior remains intact.

@@ -142,19 +142,26 @@ def _torax_transport_summary(results: list[CandidateResult]) -> list[str]:
     lines.extend(
         [
             "",
-            "| candidate_id | status | q95 | fGW line | P_SOL MW | SOL MW/m2 | comparison |",
-            "|---|---|---:|---:|---:|---:|---|",
+            "| rank | candidate_id | status | q95 | fGW line | P_SOL MW | SOL MW/m2 | comparison | reason |",
+            "|---:|---|---|---:|---:|---:|---:|---|---|",
         ]
+    )
+    executed = sorted(
+        executed,
+        key=lambda item: int(item[1].metrics.get("top_candidate_rank") or 999999),
     )
     for result, solver in executed[:10]:
         metrics = solver.metrics
+        reason = _first_reason(metrics.get("torax_transport_constraint_reasons"))
+        rank = metrics.get("top_candidate_rank") or "-"
         lines.append(
-            f"| `{result.candidate.candidate_id[:8]}` | `{solver.status}` | "
+            f"| {rank} | `{result.candidate.candidate_id[:8]}` | `{solver.status}` | "
             f"{_fmt(metrics.get('torax_final_q95'))} | "
             f"{_fmt(metrics.get('torax_final_fgw_n_e_line_avg'))} | "
             f"{_fmt(metrics.get('torax_final_P_SOL_total_MW'))} | "
             f"{_fmt(metrics.get('torax_final_SOL_heat_load_MW_m2'))} | "
-            f"`{metrics.get('torax_transport_constraint_status', 'NOT_EVALUATED')}` |"
+            f"`{metrics.get('torax_transport_constraint_status', 'NOT_EVALUATED')}` | "
+            f"`{reason}` |"
         )
     lines.append(
         "TORAX transport comparisons are `LOW_FIDELITY_PLACEHOLDER` checks against the MVP "
@@ -168,6 +175,14 @@ def _fmt(value: object) -> str:
         return f"{float(value):.3g}"
     except (TypeError, ValueError):
         return "-"
+
+
+def _first_reason(value: object) -> str:
+    if isinstance(value, list) and value:
+        return str(value[0])
+    if isinstance(value, str) and value:
+        return value
+    return "-"
 
 
 def write_markdown_report(

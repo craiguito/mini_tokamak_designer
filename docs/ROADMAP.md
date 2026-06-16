@@ -23,7 +23,7 @@ Status on 2026-06-16: FreeGS fixed-boundary MVP is implemented for candidate san
 - TORAX transport integration
 - Pulse/profile simulation
 
-Status on 2026-06-16: TORAX 1.4.0 is installed in the WSL `mini-tokamak` environment. The adapter generates per-candidate circular-geometry TORAX configs with a controlled low-fidelity profile/source model and can run an opt-in short CPU transport smoke that writes a TORAX `state_history_*.nc` file. Executed runs now extract transport output metrics and compare them against the MVP q95, Greenwald, beta, and heat-exhaust screens. The CLI also supports `--torax-top-n` to run TORAX only for the top ranked candidates after fast screening. Source calibration, pulse scenario definition, and transport-model validation remain open.
+Status on 2026-06-16: Phase 4 MVP is complete. TORAX 1.4.0 is installed in the WSL `mini-tokamak` environment. The adapter generates per-candidate circular-geometry TORAX configs with a controlled low-fidelity profile/source model and can run short CPU transport smoke runs that write TORAX `state_history_*.nc` files. Executed runs extract transport output metrics and compare them against the MVP q95, Greenwald, beta, and heat-exhaust screens. The CLI supports `--torax-top-n` to run TORAX only for the top ranked candidates after fast screening, and reports include a ranked TORAX comparison table plus a `torax_transport_comparison.png` plot. Source calibration, pulse scenario definition, and transport-model validation remain future high-fidelity work.
 
 ## Phase 5
 

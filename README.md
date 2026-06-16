@@ -297,6 +297,8 @@ mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode ran
 
 `--torax-top-n` does not require `MINI_TOKAMAK_TORAX_EXECUTE=1`; it forces TORAX only for the selected top candidates after the normal ranking pass. The selected candidates keep a single TORAX solver result in their JSON, updated from `NOT_EVALUATED` to the executed `WARNING`/`FAIL` result.
 
+When more than one TORAX candidate is executed, the report includes a ranked comparison table and `data/runs/<run_id>/plots/torax_transport_comparison.png` showing q95, line-averaged Greenwald fraction, and SOL heat-load proxy against MVP warning/fail thresholds.
+
 Optional TORAX profile controls:
 
 ```bash
@@ -306,7 +308,7 @@ export MINI_TOKAMAK_TORAX_FIXED_DT=0.05
 export MINI_TOKAMAK_TORAX_N_RHO=12
 ```
 
-The adapter forces TORAX subprocesses onto the CPU backend with `JAX_PLATFORMS=cpu`. Successful TORAX runs are labelled `WARNING`, not `PASS`, because the MVP uses candidate-derived placeholder profiles and circular geometry. Executed runs extract TORAX output summaries such as `q95`, Greenwald fraction, `P_SOL_total`, volume-averaged temperatures/density, beta proxy, and SOL heat-load proxy. Reports include a TORAX transport summary comparing those outputs against the MVP screening thresholds. The result proves software integration and output capture only; it is not a validated pulse, profile, or viability result.
+The adapter forces TORAX subprocesses onto the CPU backend with `JAX_PLATFORMS=cpu`. Successful TORAX runs are labelled `WARNING`, not `PASS`, because the MVP uses candidate-derived placeholder profiles and circular geometry. Executed runs extract TORAX output summaries such as `q95`, Greenwald fraction, `P_SOL_total`, volume-averaged temperatures/density, beta proxy, and SOL heat-load proxy. Reports include a TORAX transport summary comparing those outputs against the MVP screening thresholds. This completes the Phase 4 MVP transport workflow, but it is not a validated pulse, profile, or viability result.
 
 ## Known limitations
 
