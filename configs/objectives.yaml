@@ -1,0 +1,9 @@
+primary_objective: maximize_performance_proxy_minimize_failures
+weights:
+  feasibility_score: 1.0
+  performance_proxy: 0.15
+  compactness_penalty: 2.0
+guardrails:
+  no_viability_claim_without_external_solver_support: true
+  mark_builtin_physics_as_low_fidelity_placeholder: true
+

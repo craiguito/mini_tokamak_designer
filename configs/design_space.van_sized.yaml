@@ -1,0 +1,43 @@
+max_length_m: 6.5
+max_width_m: 2.6
+max_height_m: 2.5
+machine_type:
+  - spherical_tokamak
+  - compact_tokamak
+fuel_modes:
+  - DD_research
+  - DT_later_flag_only
+major_radius_R_m:
+  min: 0.45
+  max: 2.2
+minor_radius_a_m:
+  min: 0.18
+  max: 1.1
+aspect_ratio_A:
+  min: 1.2
+  max: 3.2
+elongation_kappa:
+  min: 1.2
+  max: 3.0
+triangularity_delta:
+  min: -0.2
+  max: 0.8
+toroidal_field_Bt_T:
+  min: 1.0
+  max: 20.0
+plasma_current_Ip_MA:
+  min: 0.1
+  max: 18.0
+heating_power_MW:
+  min: 0.1
+  max: 70.0
+shield_thickness_m:
+  min: 0.03
+  max: 1.2
+first_wall_thickness_m:
+  min: 0.005
+  max: 0.12
+center_column_radius_m:
+  min: 0.05
+  max: 0.65
+

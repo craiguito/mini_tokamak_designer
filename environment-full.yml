@@ -1,0 +1,36 @@
+name: mini-tokamak
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - xarray
+  - pydantic
+  - pyyaml
+  - matplotlib
+  - plotly
+  - rich
+  - typer
+  - pytest
+  - ruff
+  - black
+  - mypy
+  - duckdb
+  - h5py
+  - zarr
+  - openmdao
+  - optuna
+  - pytorch
+  - jax
+  - cadquery
+  - openmc
+  - paramak
+  - pip:
+      - freegs
+      - torax
+      - mlflow
+      - -e .
+

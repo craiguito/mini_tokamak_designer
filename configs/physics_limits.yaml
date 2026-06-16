@@ -1,0 +1,15 @@
+q_star:
+  warning_below: 3.0
+  fail_below: 2.0
+coil_stress_proxy_MPa:
+  warning_above: 450.0
+  fail_above: 900.0
+divertor_heat_load_proxy_MW_m2:
+  warning_above: 10.0
+  fail_above: 25.0
+shielding_proxy_m:
+  dd_research_warning_below: 0.18
+  dt_later_warning_below: 0.8
+notes:
+  - These values are rough MVP screens, not design limits or engineering certification.
+

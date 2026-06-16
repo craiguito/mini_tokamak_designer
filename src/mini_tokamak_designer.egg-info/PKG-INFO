@@ -1,0 +1,186 @@
+Metadata-Version: 2.4
+Name: mini-tokamak-designer
+Version: 0.1.0
+Summary: CPU-first simulation and optimization framework for lower-size-limit tokamak feasibility studies.
+Author: MiniTokamak Designer
+License: MIT
+Requires-Python: <3.13,>=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.26
+Requires-Dist: scipy>=1.12
+Requires-Dist: pandas>=2.2
+Requires-Dist: xarray>=2024.1
+Requires-Dist: pydantic>=2.7
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: matplotlib>=3.8
+Requires-Dist: plotly>=5.20
+Requires-Dist: rich>=13.7
+Requires-Dist: typer>=0.12
+Requires-Dist: duckdb>=1.0
+Requires-Dist: h5py>=3.10
+Requires-Dist: zarr>=2.17
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: black>=24.0; extra == "dev"
+Requires-Dist: mypy>=1.10; extra == "dev"
+Provides-Extra: optimization
+Requires-Dist: optuna>=3.6; extra == "optimization"
+Requires-Dist: torch>=2.3; extra == "optimization"
+Requires-Dist: botorch>=0.11; extra == "optimization"
+Requires-Dist: jax[cpu]>=0.4.30; extra == "optimization"
+Provides-Extra: systems
+Requires-Dist: openmdao>=3.30; extra == "systems"
+Requires-Dist: mlflow>=2.14; extra == "systems"
+Provides-Extra: fusion
+Requires-Dist: freegs; extra == "fusion"
+Requires-Dist: torax; extra == "fusion"
+Requires-Dist: openfusiontoolkit; extra == "fusion"
+Requires-Dist: paramak; extra == "fusion"
+
+# MiniTokamak Designer
+
+MiniTokamak Designer is a CPU-first simulation and optimization framework for exploring the lower-size limits of tokamak and spherical tokamak concepts. The purpose is to map why miniature designs fail: envelope fit, confinement proxies, magnetic field pressure, coil stress, shielding, heat exhaust, divertor loading, and tritium-breeding volume.
+
+This is a feasibility-research, simulation, and CAD-screening tool only. It is not a construction guide, procurement guide, hazardous-material workflow, radiation-operation workflow, tritium workflow, or reactor operating procedure.
+
+## Why miniature-first
+
+Searching the extreme small end of the design space is useful because failure modes become obvious quickly. Car-sized D-T power-reactor candidates should mostly fail in this MVP. That is expected. The useful output is the ranked failure map, not a claim that a compact power plant is viable.
+
+## Current local status
+
+This repo was created at `C:\Users\Craig\projects\mini_tokamak_designer`.
+
+WSL2/Ubuntu is the preferred target runtime, but this Windows session could not install WSL because WSL is not currently installed and the optional-feature inspection path requires elevation. The MVP is therefore also runnable from a Windows Python 3.12 virtual environment. Heavy solvers are optional and all adapters fall back cleanly when a tool is unavailable.
+
+See `install/INSTALL_LOG.md` for every install source, command, failure, and workaround recorded so far.
+
+## Architecture
+
+- `configs/`: design spaces, physics limit placeholders, and objective weights
+- `src/mini_tokamak/design/`: candidate generation, constraints, scoring, dimensionless proxies
+- `src/mini_tokamak/solvers/`: adapters for PROCESS, FUSE.jl, FreeGS, TokaMaker, TORAX, OpenMC, and thermal/structural placeholders
+- `src/mini_tokamak/cad/`: Paramak/CadQuery probes, optional STEP export, and guaranteed 2D cross-section fallback
+- `src/mini_tokamak/optimization/`: random search MVP, Optuna wrapper, BoTorch/surrogate interfaces
+- `src/mini_tokamak/storage/`: DuckDB and JSON run storage
+- `src/mini_tokamak/reporting/`: plots, Markdown reports, HTML reports, failure summaries
+- `src/mini_tokamak/ml/`: future surrogate-model dataset/training interfaces
+- `tests/`: smoke tests that pass without heavyweight external solvers
+
+Every external solver adapter implements:
+
+- `is_available()`
+- `run(candidate)`
+- `parse_results()`
+- `fallback_result(candidate, reason)`
+
+## Windows quick start
+
+From Windows Terminal:
+
+```powershell
+cd $HOME\projects\mini_tokamak_designer
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\mini-tokamak.exe verify
+```
+
+Run the first search:
+
+```powershell
+cd $HOME\projects\mini_tokamak_designer
+.\.venv\Scripts\mini-tokamak.exe run --config configs/design_space.car_sized.yaml --n 100 --mode random
+```
+
+Review runs:
+
+```powershell
+.\.venv\Scripts\mini-tokamak.exe list-runs
+.\.venv\Scripts\mini-tokamak.exe show-best
+```
+
+## WSL2/Ubuntu target path
+
+After WSL2/Ubuntu is enabled from an elevated Windows Terminal:
+
+```powershell
+wsl --install
+```
+
+Then inside Ubuntu:
+
+```bash
+mkdir -p ~/projects
+cd ~/projects/mini_tokamak_designer
+bash install/wsl_bootstrap.sh
+conda activate mini-tokamak
+mini-tokamak verify
+mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random
+```
+
+## Specialized fusion tools
+
+The install scripts use the current official docs checked on 2026-06-15:
+
+- PROCESS: clone from `https://github.com/ukaea/PROCESS` and install with `pip install .` inside Linux/WSL
+- FUSE.jl: install Julia package registry `https://github.com/ProjectTorreyPines/FuseRegistry.jl.git`, then `Pkg.add("FUSE")`
+- FreeGS: `pip install freegs`
+- TORAX: `pip install torax`
+- OpenFUSIONToolkit/TokaMaker: `pip install openfusiontoolkit`
+- CadQuery/OpenMC/Paramak: prefer conda-forge in the WSL conda environment
+
+Run optional fusion install attempts inside the activated WSL environment:
+
+```bash
+bash install/install_fusion_tools.sh
+```
+
+## Interpreting results
+
+Labels mean:
+
+- `PASS`: the MVP check passed
+- `WARNING`: the candidate is near or outside a rough screen
+- `FAIL`: the candidate violates an MVP screen
+- `NOT_EVALUATED`: a real solver workflow is not configured yet
+- `LOW_FIDELITY_PLACEHOLDER`: a simplified proxy or fallback was used
+
+The CLI will not claim a design is viable unless external solver results support it. Built-in screens are deliberately conservative placeholders.
+
+## Outputs
+
+A run creates:
+
+- `data/runs/<run_id>/all_results.json`
+- `data/runs/<run_id>/top_candidates.csv`
+- `data/runs/<run_id>/plots/*.png`
+- `data/runs/mini_tokamak.duckdb`
+- `data/reports/<run_id>/report.md`
+- `data/reports/<run_id>/report.html`
+- `data/cad/<run_id>/*_cross_section.png`
+- `data/cad/<run_id>/*_cross_section.svg`
+- Optional STEP file if CadQuery is installed
+
+## Tests
+
+```powershell
+cd $HOME\projects\mini_tokamak_designer
+.\.venv\Scripts\python.exe -m pytest
+```
+
+The tests do not require PROCESS, FUSE, FreeGS, TokaMaker, TORAX, OpenMC, Paramak, or CadQuery.
+
+## Known limitations
+
+- Built-in physics is low-fidelity and intended only for failure mapping.
+- Equilibrium, transport, neutronics, CAD-neutronics, and structural analysis are adapter stubs until external tools are installed and validated.
+- D-T breeding is intentionally flagged as impossible for car-sized MVP envelopes.
+- OpenMC is not run until cross-section data and a validated geometry workflow are configured.
+- CAD fallback geometry is a visualization aid, not construction geometry.
+
+## Next milestones
+
+See `docs/ROADMAP.md`.
+

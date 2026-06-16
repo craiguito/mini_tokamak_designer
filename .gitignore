@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+data/runs/pytest_tmp/
+data/runs/*.duckdb
+data/runs/*/
+data/cad/*/
+data/reports/*/
+data/processed/*
+!data/processed/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+

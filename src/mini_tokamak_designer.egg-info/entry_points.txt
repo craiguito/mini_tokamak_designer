@@ -1,0 +1,2 @@
+[console_scripts]
+mini-tokamak = mini_tokamak.cli:app
