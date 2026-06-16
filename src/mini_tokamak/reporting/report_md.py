@@ -72,6 +72,8 @@ def render_markdown_report(
     for name, count in failure_counts.most_common():
         lines.append(f"- `{name}`: `{count}`")
 
+    lines.extend(_torax_transport_summary(results))
+
     lines.extend(["", "## Top Candidates", ""])
     lines.append("| rank | candidate_id | score | feasibility | dominant failure | R | a | Bt | Ip |")
     lines.append("|---:|---|---:|---:|---|---:|---:|---:|---:|")
@@ -106,6 +108,66 @@ def render_markdown_report(
         ]
     )
     return "\n".join(lines)
+
+
+def _torax_transport_summary(results: list[CandidateResult]) -> list[str]:
+    torax_results = [
+        (result, solver)
+        for result in results
+        for solver in result.solver_results
+        if solver.solver == "TORAX"
+    ]
+    if not torax_results:
+        return []
+
+    status_counts: dict[str, int] = {}
+    executed: list[tuple[CandidateResult, object]] = []
+    for result, solver in torax_results:
+        status_counts[solver.status] = status_counts.get(solver.status, 0) + 1
+        if solver.metrics.get("stage") == "run_torax":
+            executed.append((result, solver))
+
+    lines = ["", "## TORAX Transport Summary", ""]
+    for status, count in sorted(status_counts.items()):
+        lines.append(f"- `{status}`: `{count}`")
+    lines.append(f"- Executed TORAX runs: `{len(executed)}`")
+
+    if not executed:
+        lines.append(
+            "- TORAX configs were generated but not executed. Set "
+            "`MINI_TOKAMAK_TORAX_EXECUTE=1` for a short CPU transport smoke."
+        )
+        return lines
+
+    lines.extend(
+        [
+            "",
+            "| candidate_id | status | q95 | fGW line | P_SOL MW | SOL MW/m2 | comparison |",
+            "|---|---|---:|---:|---:|---:|---|",
+        ]
+    )
+    for result, solver in executed[:10]:
+        metrics = solver.metrics
+        lines.append(
+            f"| `{result.candidate.candidate_id[:8]}` | `{solver.status}` | "
+            f"{_fmt(metrics.get('torax_final_q95'))} | "
+            f"{_fmt(metrics.get('torax_final_fgw_n_e_line_avg'))} | "
+            f"{_fmt(metrics.get('torax_final_P_SOL_total_MW'))} | "
+            f"{_fmt(metrics.get('torax_final_SOL_heat_load_MW_m2'))} | "
+            f"`{metrics.get('torax_transport_constraint_status', 'NOT_EVALUATED')}` |"
+        )
+    lines.append(
+        "TORAX transport comparisons are `LOW_FIDELITY_PLACEHOLDER` checks against the MVP "
+        "screening proxies; they are not viability claims."
+    )
+    return lines
+
+
+def _fmt(value: object) -> str:
+    try:
+        return f"{float(value):.3g}"
+    except (TypeError, ValueError):
+        return "-"
 
 
 def write_markdown_report(

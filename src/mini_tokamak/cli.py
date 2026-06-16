@@ -95,6 +95,12 @@ def run(
         "--fuse-actors",
         help="Comma-separated FUSE actors for --fuse-top-n, e.g. ActorPFdesign,ActorCXbuild.",
     ),
+    torax_top_n: int = typer.Option(
+        0,
+        "--torax-top-n",
+        min=0,
+        help="Run the TORAX CPU transport smoke on the top N ranked candidates after screening.",
+    ),
 ) -> None:
     """Run a design-space search."""
     config_path = resolve_path(config)
@@ -107,6 +113,7 @@ def run(
             seed=seed,
             fuse_top_n=fuse_top_n,
             fuse_actors=fuse_actors,
+            torax_top_n=torax_top_n,
         )
     elif mode == "optuna":
         summary = run_optuna_search(
@@ -115,6 +122,7 @@ def run(
             project_root=root,
             fuse_top_n=fuse_top_n,
             fuse_actors=fuse_actors,
+            torax_top_n=torax_top_n,
         )
     else:
         raise typer.BadParameter("mode must be 'random' or 'optuna'")

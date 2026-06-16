@@ -40,7 +40,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --basetemp=data/runs/pytest_tmp"
+addopts = "-q --basetemp=.pytest_tmp"
 
 [tool.ruff]
 line-length = 100

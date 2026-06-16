@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .ruff_cache/
 *.pyc
@@ -13,4 +14,3 @@ data/processed/*
 !data/processed/.gitkeep
 data/raw/*
 !data/raw/.gitkeep
-

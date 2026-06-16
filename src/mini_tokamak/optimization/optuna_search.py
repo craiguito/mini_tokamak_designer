@@ -17,6 +17,7 @@ def run_optuna_search(
     project_root: str | Path | None = None,
     fuse_top_n: int = 0,
     fuse_actors: str | None = None,
+    torax_top_n: int = 0,
 ):
     try:
         import optuna  # noqa: F401
@@ -27,6 +28,7 @@ def run_optuna_search(
             project_root=project_root,
             fuse_top_n=fuse_top_n,
             fuse_actors=fuse_actors,
+            torax_top_n=torax_top_n,
         )
     return run_random_search(
         config_path,
@@ -34,4 +36,5 @@ def run_optuna_search(
         project_root=project_root,
         fuse_top_n=fuse_top_n,
         fuse_actors=fuse_actors,
+        torax_top_n=torax_top_n,
     )

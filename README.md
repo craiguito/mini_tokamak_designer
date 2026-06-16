@@ -36,7 +36,8 @@ Installed and verified in WSL:
 - PROCESS, with MVP input-deck generation wired into the adapter
 - FUSE.jl v1.1.4, with MVP candidate-probe generation and opt-in `FUSE.init` execution wired into the adapter
 - FreeGS 0.8.2, with fixed-boundary equilibrium sanity checks wired into the adapter
-- TORAX
+- OpenFUSIONToolkit/TokaMaker, with proxy mesh generation and opt-in vacuum/free-boundary smoke execution wired into the adapter
+- TORAX 1.4.0, with candidate config generation and opt-in CPU transport smoke execution wired into the adapter
 - CadQuery
 - OpenMC
 - Paramak
@@ -170,6 +171,10 @@ A run creates:
 - `data/runs/<run_id>/external_solvers/fuse.jl/<candidate_id>/fuse_result.json`, `stdout.txt`, and `stderr.txt` when FUSE execution is enabled
 - `data/runs/<run_id>/external_solvers/fuse.jl/<candidate_id>/fuse_actor_sequence.json`, `actor_stdout.txt`, and `actor_stderr.txt` when `--fuse-top-n` is used
 - `data/runs/<run_id>/external_solvers/freegs/<candidate_id>/miller_boundary.json`, `freegs_result.json`, and, when the solve reaches Picard completion, `freegs_fields.npz` and `freegs_equilibrium.png`
+- `data/runs/<run_id>/external_solvers/tokamaker/<candidate_id>/tokamaker_input.json` and `tokamaker_runner.py` when TokaMaker is available
+- `data/runs/<run_id>/external_solvers/tokamaker/<candidate_id>/tokamaker_result.json`, `stdout.txt`, `stderr.txt`, `tokamaker_mesh.npz`, and `tokamaker_mesh.png` when TokaMaker execution is enabled and reaches mesh/vacuum stages
+- `data/runs/<run_id>/external_solvers/torax/<candidate_id>/candidate.json`, `torax_manifest.json`, and `torax_config.py` when TORAX is available
+- `data/runs/<run_id>/external_solvers/torax/<candidate_id>/torax_result.json`, `stdout.txt`, `stderr.txt`, and `torax_output/state_history_*.nc` when TORAX execution is enabled
 - `data/reports/<run_id>/report.md`
 - `data/reports/<run_id>/report.html`
 - `data/cad/<run_id>/*_cross_section.png`
@@ -243,12 +248,73 @@ The adapter writes `candidate.json`, `miller_boundary.json`, and `freegs_result.
 
 Implementation note: FreeGS 0.8.2 hit a scalar/array issue in its critical-point finder with the current SciPy stack during the MVP fixed-boundary path. The adapter installs an in-process fixed-boundary critical-point fallback for this path only. This is documented as `adapter_local_fixed_boundary_fallback` in result JSON.
 
+## TokaMaker adapter behavior
+
+The TokaMaker adapter now probes OpenFUSIONToolkit by importing `h5py` before `OpenFUSIONToolkit`, which avoids the local HDF5 library-order issue observed in this environment. Default sweeps generate a candidate-specific TokaMaker manifest and a runnable Python runner, but do not execute TokaMaker by default.
+
+To run the opt-in vacuum-solve preflight:
+
+```bash
+export MINI_TOKAMAK_TOKAMAKER_EXECUTE=1
+mini-tokamak run --config configs/design_space.car_sized.yaml --n 5 --mode random
+```
+
+To additionally attempt the nonlinear free-boundary target solve:
+
+```bash
+export MINI_TOKAMAK_TOKAMAKER_EXECUTE=1
+export MINI_TOKAMAK_TOKAMAKER_MODE=free_boundary
+mini-tokamak run --config configs/design_space.car_sized.yaml --n 2 --mode random
+```
+
+The adapter first builds a proxy Miller-boundary plasma region and two PF coil proxy rectangles using `gs_Domain`, then runs a TokaMaker vacuum solve. A vacuum-solve success is labelled `WARNING`, not `PASS`, because it proves OpenFUSIONToolkit plumbing and mesh/coil consistency only. Free-boundary target-solve failures are expected at this stage and are recorded as controlled `FAIL` results with the solver stage and error text.
+
+## TORAX adapter behavior
+
+The TORAX adapter maps each candidate into a short circular-geometry TORAX config for transport plumbing checks. Default sweeps generate `candidate.json`, `torax_manifest.json`, and `torax_config.py`, but do not execute TORAX so that 100-candidate screening remains fast.
+
+The generated manifest includes a controlled low-fidelity profile/source model:
+
+- density target as a configurable Greenwald-fraction proxy
+- clipped line-averaged density and shaped density profile
+- beta-capped ion/electron temperature profiles
+- candidate heating power mapped to TORAX generic heat
+- guardrail reasons for density clipping, beta capping, heat-exhaust stress, and power-density excursions
+
+To run the short CPU transport smoke for generated candidates:
+
+```bash
+export MINI_TOKAMAK_TORAX_EXECUTE=1
+export MINI_TOKAMAK_TORAX_TIMEOUT_S=240
+mini-tokamak run --config configs/design_space.car_sized.yaml --n 1 --mode random --seed 42
+```
+
+To keep the broad screen fast and execute TORAX only for the best ranked candidates, use the post-screening pass:
+
+```bash
+mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random --torax-top-n 1
+```
+
+`--torax-top-n` does not require `MINI_TOKAMAK_TORAX_EXECUTE=1`; it forces TORAX only for the selected top candidates after the normal ranking pass. The selected candidates keep a single TORAX solver result in their JSON, updated from `NOT_EVALUATED` to the executed `WARNING`/`FAIL` result.
+
+Optional TORAX profile controls:
+
+```bash
+export MINI_TOKAMAK_TORAX_GREENWALD_FRACTION=0.25
+export MINI_TOKAMAK_TORAX_T_FINAL=0.2
+export MINI_TOKAMAK_TORAX_FIXED_DT=0.05
+export MINI_TOKAMAK_TORAX_N_RHO=12
+```
+
+The adapter forces TORAX subprocesses onto the CPU backend with `JAX_PLATFORMS=cpu`. Successful TORAX runs are labelled `WARNING`, not `PASS`, because the MVP uses candidate-derived placeholder profiles and circular geometry. Executed runs extract TORAX output summaries such as `q95`, Greenwald fraction, `P_SOL_total`, volume-averaged temperatures/density, beta proxy, and SOL heat-load proxy. Reports include a TORAX transport summary comparing those outputs against the MVP screening thresholds. The result proves software integration and output capture only; it is not a validated pulse, profile, or viability result.
+
 ## Known limitations
 
 - Built-in physics is low-fidelity and intended only for failure mapping.
 - PROCESS input generation is wired, but the candidate-to-PROCESS mapping is still low fidelity and does not directly set candidate `Ip`; the template uses PROCESS current-scaling variables.
 - FUSE initialization and a top-candidate actor pass are wired, but the candidate-to-FUSE mapping is intentionally minimal and does not yet run stationary plasma actors, systems optimization, or time-dependent simulations by default.
-- FreeGS fixed-boundary checks are wired, but TokaMaker/free-boundary equilibrium, transport, neutronics, CAD-neutronics, and structural analysis are still adapter stubs or placeholders until their external workflows are validated.
+- FreeGS fixed-boundary checks and TokaMaker proxy vacuum solves are wired, but high-fidelity free-boundary equilibrium, neutronics, CAD-neutronics, and structural analysis remain placeholders until their external workflows are validated.
+- TORAX config generation, controlled low-fidelity profile/source initialization, output extraction, and a short opt-in CPU transport smoke are wired, but source calibration, pulse scenarios, and transport validation remain placeholders.
 - D-T breeding is intentionally flagged as impossible for car-sized MVP envelopes.
 - OpenMC is not run until cross-section data and a validated geometry workflow are configured.
 - CAD fallback geometry is a visualization aid, not construction geometry.

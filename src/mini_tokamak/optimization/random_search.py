@@ -15,9 +15,10 @@ from mini_tokamak.design.scoring import objective_score
 from mini_tokamak.reporting.plots import generate_plots
 from mini_tokamak.reporting.report_html import write_html_report
 from mini_tokamak.reporting.report_md import write_markdown_report
-from mini_tokamak.schemas import CandidateResult, RunSummary
+from mini_tokamak.schemas import CandidateResult, RunSummary, SolverResult
 from mini_tokamak.solvers import default_adapters
 from mini_tokamak.solvers.fuse_adapter import FUSEAdapter, parse_actor_sequence
+from mini_tokamak.solvers.torax_adapter import TORAXAdapter
 from mini_tokamak.storage.db import connect, insert_candidate_result, insert_run, replace_candidate_result
 from mini_tokamak.storage.run_store import (
     ensure_run_dirs,
@@ -35,6 +36,7 @@ def run_random_search(
     seed: int | None = 42,
     fuse_top_n: int = 0,
     fuse_actors: str | None = None,
+    torax_top_n: int = 0,
 ) -> RunSummary:
     config_path = Path(config_path)
     root = Path(project_root) if project_root else project_root_from_path(config_path)
@@ -78,6 +80,13 @@ def run_random_search(
         results_dir=dirs["results"],
         top_n=fuse_top_n,
         actors=parse_actor_sequence(fuse_actors),
+    )
+    _run_torax_transport_pass(
+        results=results,
+        adapters=adapters,
+        db_path=db_path,
+        results_dir=dirs["results"],
+        top_n=torax_top_n,
     )
     write_all_results(results, dirs["run"] / "all_results.json")
     write_top_csv(results, dirs["run"] / "top_candidates.csv")
@@ -135,3 +144,46 @@ def _run_fuse_actor_pass(
             )
             write_candidate_json(result, results_dir)
             replace_candidate_result(conn, result)
+
+
+def _run_torax_transport_pass(
+    results: list[CandidateResult],
+    adapters: list[object],
+    db_path: Path,
+    results_dir: Path,
+    top_n: int,
+) -> None:
+    if top_n <= 0 or not results:
+        return
+    torax_adapter = next((adapter for adapter in adapters if isinstance(adapter, TORAXAdapter)), None)
+    if torax_adapter is None:
+        return
+
+    selected = results[: min(top_n, len(results))]
+    with connect(db_path) as conn:
+        for rank, result in enumerate(
+            track(selected, description="TORAX transport pass"),
+            start=1,
+        ):
+            solver_result = torax_adapter.run_transport_smoke(result.candidate, rank)
+            _replace_solver_result(result, solver_name=torax_adapter.name, solver_result=solver_result)
+            result.constraints.external_solver_support = any(
+                item.available and item.status == "PASS" for item in result.solver_results
+            )
+            result.constraints.viability_claim = result.constraints.external_solver_support and not any(
+                check.status == "FAIL" for check in result.constraints.checks
+            )
+            write_candidate_json(result, results_dir)
+            replace_candidate_result(conn, result)
+
+
+def _replace_solver_result(
+    result: CandidateResult,
+    solver_name: str,
+    solver_result: SolverResult,
+) -> None:
+    for index, existing in enumerate(result.solver_results):
+        if existing.solver == solver_name:
+            result.solver_results[index] = solver_result
+            return
+    result.solver_results.append(solver_result)

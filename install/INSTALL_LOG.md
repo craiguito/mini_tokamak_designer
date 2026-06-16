@@ -3693,3 +3693,327 @@ Stacktrace:
     - `data/reports/20260616T030457Z-a13d759f/report.md`
     - `data/reports/20260616T030457Z-a13d759f/report.html`
     - CAD PNG, SVG, and STEP outputs under `data/cad/20260616T030457Z-a13d759f/`
+
+## TokaMaker adapter v1 implementation on 2026-06-16
+
+- Local OpenFUSIONToolkit/TokaMaker source inspected:
+  - Package path: `/home/craig/miniforge/envs/mini-tokamak/lib/python3.12/site-packages/OpenFUSIONToolkit`
+  - TokaMaker core API source: `OpenFUSIONToolkit/TokaMaker/_core.py`
+  - TokaMaker meshing helper source: `OpenFUSIONToolkit/TokaMaker/meshing.py`
+  - Relevant local API pattern:
+    - `from OpenFUSIONToolkit.TokaMaker.meshing import gs_Domain`
+    - `domain.define_region(...)`
+    - `domain.add_polygon(...)`
+    - `domain.add_rectangle(...)`
+    - `domain.build_mesh()`
+    - `TokaMaker(OFT_env(...))`
+    - `setup_mesh`, `setup_regions`, `setup`, `set_coil_currents`, `vac_solve`, `set_targets`, `solve`
+- Environment/import note:
+  - Direct `import OpenFUSIONToolkit` initially failed with:
+    - `ImportError: ... h5py/defs... undefined symbol: H5Pget_dxpl_mpio`
+  - Workaround verified:
+    - `import h5py` before `import OpenFUSIONToolkit`
+  - The adapter probe and generated TokaMaker runner use this import order.
+  - No package files were modified.
+- Updated `src/mini_tokamak/solvers/tokamaker_adapter.py`:
+  - Replaced the stub with a staged adapter.
+  - Generates per-candidate:
+    - `candidate.json`
+    - `tokamaker_input.json`
+    - `tokamaker_runner.py`
+  - Default execution remains off to keep standard 100-candidate sweeps fast.
+  - Execution controls:
+    - `MINI_TOKAMAK_TOKAMAKER_EXECUTE=1`
+    - `MINI_TOKAMAK_TOKAMAKER_MODE=vacuum` for the default vacuum-solve preflight
+    - `MINI_TOKAMAK_TOKAMAKER_MODE=free_boundary` for a controlled nonlinear target-solve attempt after vacuum solve
+    - `MINI_TOKAMAK_TOKAMAKER_TIMEOUT_S`
+    - `MINI_TOKAMAK_TOKAMAKER_MAXITS`
+    - `MINI_TOKAMAK_TOKAMAKER_MESH_SCALE`
+  - Uses a Miller-like plasma target boundary and two PF proxy coil rectangles.
+  - Writes `tokamaker_mesh.npz` and `tokamaker_mesh.png` when mesh generation succeeds.
+  - Successful vacuum solves return solver status `WARNING`, not `PASS`, because they are integration evidence only.
+  - Geometry-precheck failures return `FAIL` and do not execute TokaMaker.
+  - Free-boundary target-solve failures are captured as controlled `FAIL` results instead of crashing the CLI.
+- Plotting workaround:
+  - First opt-in TokaMaker smoke generated meshes but failed in the generated plot routine because region IDs are cell-based, not point-based:
+    - `'c' argument has ... elements, which is inconsistent with 'x' and 'y'`
+  - Fixed the runner plot to use `matplotlib.tripcolor(..., facecolors=reg)`.
+- Added tests:
+  - `tests/test_tokamaker_adapter.py`
+  - Covers manifest generation, non-executing runner generation, vacuum execution success handling, and controlled free-boundary failure handling.
+- Validation commands completed:
+  - Windows: `.venv\Scripts\python.exe -m pytest`
+    - Result: `20 passed`
+  - Windows: `.venv\Scripts\python.exe -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `python -m pytest`
+    - Result: `20 passed`
+  - WSL: `python -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `mini-tokamak verify`
+    - Result: `TokaMaker PASS` from the adapter probe.
+- Default non-executing TokaMaker sweep:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 3 --mode random`
+  - Run ID: `20260616T034627Z-b19b9556`
+  - Result: command completed successfully.
+  - TokaMaker artifacts: 3 `tokamaker_input.json`, 3 `tokamaker_runner.py`, 1 geometry-precheck `tokamaker_result.json`.
+- Opt-in TokaMaker vacuum-solve smoke:
+  - Command: `MINI_TOKAMAK_TOKAMAKER_EXECUTE=1 MINI_TOKAMAK_TOKAMAKER_TIMEOUT_S=180 mini-tokamak run --config configs/design_space.car_sized.yaml --n 5 --mode random --seed 7`
+  - Final run ID: `20260616T034857Z-c3ebe47b`
+  - Result: command completed successfully.
+  - TokaMaker status summary:
+    - 4 candidates: solver status `WARNING`, `tokamaker_status=PASS`, stage `vacuum_solve`.
+    - 1 candidate: solver status `FAIL`, stage `geometry_precheck`.
+  - Artifacts: 5 `tokamaker_input.json`, 5 `tokamaker_runner.py`, 5 `tokamaker_result.json`, 4 `tokamaker_mesh.npz`, 4 `tokamaker_mesh.png`.
+- Opt-in TokaMaker free-boundary attempt smoke:
+  - Command: `MINI_TOKAMAK_TOKAMAKER_EXECUTE=1 MINI_TOKAMAK_TOKAMAKER_MODE=free_boundary MINI_TOKAMAK_TOKAMAKER_TIMEOUT_S=180 mini-tokamak run --config configs/design_space.car_sized.yaml --n 2 --mode random --seed 7`
+  - Run ID: `20260616T034935Z-aa75cab4`
+  - Result: command completed successfully.
+  - TokaMaker status summary:
+    - 1 candidate: geometry precheck `FAIL`.
+    - 1 candidate: vacuum solve `PASS`, free-boundary target solve `FAIL`.
+  - Controlled free-boundary error captured:
+    - `Error in solve: Matrix solve failed for targets`
+- Final 100-candidate acceptance run after TokaMaker adapter changes:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random`
+  - Run ID: `20260616T035005Z-a7b92f71`
+  - Result: command completed successfully in WSL.
+  - Candidate results: 100 JSON result files.
+  - TokaMaker artifacts: 100 `tokamaker_input.json`, 100 `tokamaker_runner.py`, 29 geometry-precheck `tokamaker_result.json`.
+  - TokaMaker default status summary:
+    - 71 candidates: solver status `NOT_EVALUATED`, geometry status `PASS`, execution skipped by default.
+    - 29 candidates: solver status `FAIL`, stage `geometry_precheck`.
+  - Markdown and HTML reports were generated.
+
+## TORAX adapter v1 implementation on 2026-06-16
+
+- No GPU, ROCm, driver, ComfyUI, or image-generation installs were changed.
+- No new TORAX install command was needed in this step; TORAX was already installed in the WSL `mini-tokamak` conda environment.
+- Official/current source references already recorded for TORAX:
+  - Install docs: `https://torax.readthedocs.io/en/v1.4.0/installation.html`
+- Local TORAX package inspected in WSL:
+  - Package path: `/home/craig/miniforge/envs/mini-tokamak/lib/python3.12/site-packages/torax/__init__.py`
+  - Example config: `/home/craig/miniforge/envs/mini-tokamak/lib/python3.12/site-packages/torax/examples/basic_config.py`
+  - CLI entry point: `/home/craig/miniforge/envs/mini-tokamak/bin/run_torax`
+  - Runner source: `/home/craig/miniforge/envs/mini-tokamak/lib/python3.12/site-packages/torax/run_simulation_main.py`
+- Baseline TORAX example smoke:
+  - Command: `run_torax --config /home/craig/miniforge/envs/mini-tokamak/lib/python3.12/site-packages/torax/examples/basic_config.py --quit --output_dir /tmp/mini_tokamak_torax_basic_smoke`
+  - Result: completed successfully.
+  - Output file: `/tmp/mini_tokamak_torax_basic_smoke/state_history_20260616_025537.nc`
+  - Runtime note: TORAX/JAX ran on CPU backend; no GPU path was required.
+- Updated `src/mini_tokamak/solvers/torax_adapter.py`:
+  - Replaced the stub with a staged adapter.
+  - Probes TORAX by importing `torax` and locating `run_torax`.
+  - Generates per-candidate:
+    - `candidate.json`
+    - `torax_manifest.json`
+    - `torax_config.py`
+  - Default execution remains off to keep standard 100-candidate sweeps fast.
+  - Execution controls:
+    - `MINI_TOKAMAK_TORAX_EXECUTE=1`
+    - `MINI_TOKAMAK_TORAX_TIMEOUT_S`
+    - `MINI_TOKAMAK_TORAX_T_FINAL`
+    - `MINI_TOKAMAK_TORAX_FIXED_DT`
+    - `MINI_TOKAMAK_TORAX_N_RHO`
+  - Generated configs use TORAX circular geometry with candidate-derived `R_major`, `a_minor`, `B_0`, and `elongation_LCFS`.
+  - Candidate-derived profile and source values are explicitly treated as `LOW_FIDELITY_PLACEHOLDER`.
+  - TORAX subprocesses set `JAX_PLATFORMS=cpu`, `CUDA_VISIBLE_DEVICES=""`, and `MPLBACKEND=Agg`.
+  - Successful short TORAX executions return solver status `WARNING`, not `PASS`, because they are transport plumbing evidence only.
+  - Geometry-precheck failures return `FAIL` and do not execute TORAX.
+  - Output summaries record NetCDF state-history path, file size, time-step count, and sampled xarray variables when parseable.
+- Added tests:
+  - `tests/test_torax_adapter.py`
+  - Covers manifest mapping, non-executing config generation, missing `run_torax` handling, and execution-success result handling.
+- Test infrastructure workaround:
+  - Windows pytest first failed before test bodies executed because `data/runs/pytest_tmp` and then `%TEMP%/pytest-of-Craig` had inaccessible ACLs.
+  - Changed `pyproject.toml` pytest addopts to `--basetemp=.pytest_tmp`.
+  - Added `.pytest_tmp/` to `.gitignore`.
+  - This only affects test temporary files and does not change runtime data outputs.
+- Validation commands completed:
+  - Windows: `.venv\Scripts\python.exe -m pytest`
+    - Result: `24 passed`
+  - Windows: `.venv\Scripts\python.exe -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `python -m pytest`
+    - Result: `24 passed`
+  - WSL: `python -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `mini-tokamak verify`
+    - Result: `TORAX PASS` from the adapter probe.
+- Default non-executing TORAX sweep:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 3 --mode random`
+  - Run ID: `20260616T070219Z-a7192e4a`
+  - Result: command completed successfully.
+  - TORAX artifacts: 3 `candidate.json`, 3 `torax_manifest.json`, 3 `torax_config.py`.
+  - TORAX NetCDF outputs: 0, as expected when execution is skipped by default.
+- Opt-in TORAX CPU transport smoke:
+  - Command: `MINI_TOKAMAK_TORAX_EXECUTE=1 MINI_TOKAMAK_TORAX_TIMEOUT_S=240 mini-tokamak run --config configs/design_space.car_sized.yaml --n 1 --mode random --seed 42`
+  - Run ID: `20260616T070252Z-ab6d2c17`
+  - Result: command completed successfully.
+  - TORAX status: solver status `WARNING`, `torax_status=PASS`, stage `run_torax`.
+  - Output file: `data/runs/20260616T070252Z-ab6d2c17/external_solvers/torax/e1674eed-943a-4e5e-bee8-88d347a2cf89/torax_output/state_history_20260616_030314.nc`
+  - Output summary: 5 time steps, final simulated time 0.2 s.
+  - Runtime note: stderr recorded `JAX running on a default cpu backend`.
+  - TORAX warning recorded but non-fatal: legacy psi initialization fallback because `profile_conditions.psi` was not supplied.
+- Final 100-candidate acceptance run after TORAX adapter changes:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random`
+  - Run ID: `20260616T070338Z-22d2155b`
+  - Result: command completed successfully in WSL.
+  - Candidate results: 100 JSON result files.
+  - TORAX artifacts: 100 `torax_manifest.json`, 100 `torax_config.py`.
+  - TORAX default output summary:
+    - 99 candidates: solver status `NOT_EVALUATED`, execution skipped by default.
+    - 1 candidate: solver status `FAIL`, stage `geometry_precheck`.
+    - 0 TORAX NetCDF outputs, as expected when `MINI_TOKAMAK_TORAX_EXECUTE` is not set.
+  - Report artifacts:
+    - `data/reports/20260616T070338Z-22d2155b/report.md`
+    - `data/reports/20260616T070338Z-22d2155b/report.html`
+  - CAD artifacts:
+    - `data/cad/20260616T070338Z-22d2155b/bb2781b1-b7ca-4120-8a88-72e37845b5f1_cross_section.png`
+    - `data/cad/20260616T070338Z-22d2155b/bb2781b1-b7ca-4120-8a88-72e37845b5f1_cross_section.svg`
+    - `data/cad/20260616T070338Z-22d2155b/bb2781b1-b7ca-4120-8a88-72e37845b5f1_plasma_proxy.step`
+
+## TORAX controlled profile/source model on 2026-06-16
+
+- No GPU, ROCm, driver, ComfyUI, or image-generation installs were changed.
+- No new package installation was performed.
+- Updated `src/mini_tokamak/solvers/torax_adapter.py`:
+  - Added `controlled_profile_source_v1`.
+  - Density model:
+    - Uses a configurable Greenwald-fraction target from `MINI_TOKAMAK_TORAX_GREENWALD_FRACTION`.
+    - Clips the candidate density target into the MVP operating envelope.
+    - Records target and actual Greenwald fractions in `torax_manifest.json`.
+    - Records guardrails for density cap/floor clipping.
+  - Temperature model:
+    - Builds ion/electron profile shapes from candidate heating power and plasma volume.
+    - Applies a beta-derived temperature cap.
+    - Records whether the temperature was beta-capped.
+  - Source model:
+    - Maps candidate heating power to TORAX `generic_heat.P_total`.
+    - Records power density and input SOL heat-load proxy.
+  - Output extraction:
+    - Extracts TORAX scalar/profile metrics from `state_history_*.nc`, including q95, Greenwald fraction, P_SOL, tau_E, volume-averaged temperatures/density, beta proxy, and profile edge/core values.
+  - Transport comparison:
+    - Compares executed TORAX outputs against MVP q95, Greenwald, beta, and SOL heat-load screens.
+    - Stores `torax_transport_constraint_status`, `torax_transport_constraint_reasons`, and related metrics in `torax_result.json` and candidate result JSON.
+    - These comparisons remain `LOW_FIDELITY_PLACEHOLDER` and are not viability claims.
+- Updated `src/mini_tokamak/reporting/report_md.py`:
+  - Adds a `TORAX Transport Summary` section to Markdown and HTML reports.
+  - Non-executed default runs show status counts and the opt-in execution hint.
+  - Executed TORAX runs show candidate ID, q95, Greenwald fraction, P_SOL, SOL heat load, and comparison status.
+- Updated tests:
+  - `tests/test_torax_adapter.py`
+  - Added coverage for controlled profile generation, Greenwald-fraction env override, transport comparison flags, and execution-success comparison defaults.
+- Validation commands completed:
+  - Windows: `.venv\Scripts\python.exe -m pytest`
+    - Result: `26 passed`
+  - Windows: `.venv\Scripts\python.exe -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `python -m pytest`
+    - Result: `26 passed`
+  - WSL: `python -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `mini-tokamak verify`
+    - Result: `TORAX PASS` from the adapter probe.
+- Opt-in TORAX smoke after controlled profile/source implementation:
+  - Command: `MINI_TOKAMAK_TORAX_EXECUTE=1 MINI_TOKAMAK_TORAX_TIMEOUT_S=240 mini-tokamak run --config configs/design_space.car_sized.yaml --n 1 --mode random --seed 43`
+  - Run ID: `20260616T071804Z-66b92c0f`
+  - Result: command completed successfully.
+  - TORAX status: solver status `WARNING`, `torax_status=PASS`, stage `run_torax`.
+  - Output file: `data/runs/20260616T071804Z-66b92c0f/external_solvers/torax/94d095c8-d632-4855-9484-b6ad38466498/torax_output/state_history_20260616_031827.nc`
+  - Extracted output summary:
+    - `time_steps=5`
+    - `t_final_s=0.2`
+    - `torax_final_q95=3.811683711727687`
+    - `torax_final_fgw_n_e_line_avg=0.017647332456675918`
+    - `torax_final_P_SOL_total_MW=26.143847668849222`
+    - `torax_final_SOL_heat_load_MW_m2=98.15042506561178`
+    - `torax_final_beta_proxy_percent=0.24627100862762397`
+    - `torax_transport_constraint_status=FAIL`
+    - `torax_transport_constraint_reasons=['torax_sol_heat_exhaust_proxy_fail']`
+  - Report summary verified in `data/reports/20260616T071804Z-66b92c0f/report.md`.
+- Final 100-candidate acceptance run after controlled profile/source implementation:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random`
+  - Run ID: `20260616T072001Z-d42bd2c9`
+  - Result: command completed successfully in WSL.
+  - Candidate results: 100 JSON result files.
+  - TORAX artifacts: 100 `torax_manifest.json`, 100 `torax_config.py`.
+  - TORAX NetCDF outputs: 0, as expected when `MINI_TOKAMAK_TORAX_EXECUTE` is not set.
+  - TORAX solver status summary:
+    - 99 candidates: solver status `NOT_EVALUATED`, execution skipped by default.
+    - 1 candidate: solver status `FAIL`, stage `geometry_precheck`.
+  - Controlled-profile guardrail summary:
+    - 5 candidates: `PASS`
+    - 45 candidates: `WARNING`
+    - 50 candidates: `FAIL`
+  - Report artifacts:
+    - `data/reports/20260616T072001Z-d42bd2c9/report.md`
+    - `data/reports/20260616T072001Z-d42bd2c9/report.html`
+  - CAD artifacts:
+    - `data/cad/20260616T072001Z-d42bd2c9/1f5764ee-56a0-4672-91ba-e475a38d0d41_cross_section.png`
+    - `data/cad/20260616T072001Z-d42bd2c9/1f5764ee-56a0-4672-91ba-e475a38d0d41_cross_section.svg`
+    - `data/cad/20260616T072001Z-d42bd2c9/1f5764ee-56a0-4672-91ba-e475a38d0d41_plasma_proxy.step`
+
+## TORAX top-candidate post-screening pass on 2026-06-16
+
+- No GPU, ROCm, driver, ComfyUI, or image-generation installs were changed.
+- No new package installation was performed.
+- Updated `src/mini_tokamak/solvers/torax_adapter.py`:
+  - Added `run_transport_smoke(candidate, rank)`.
+  - This method forces TORAX execution for a selected ranked candidate without requiring `MINI_TOKAMAK_TORAX_EXECUTE=1`.
+  - Result metrics now include:
+    - `execution_source=torax_top_n`
+    - `top_candidate_rank`
+- Updated `src/mini_tokamak/optimization/random_search.py`:
+  - Added `torax_top_n` support.
+  - Added a post-screening `TORAX transport pass` after the existing FUSE actor pass and before report generation.
+  - Replaces the selected candidate's existing `TORAX` solver result instead of appending a duplicate TORAX result.
+  - Rewrites the candidate JSON and DuckDB row after the TORAX pass.
+- Updated `src/mini_tokamak/optimization/optuna_search.py`:
+  - Forwarded `torax_top_n` through the current Optuna wrapper.
+- Updated `src/mini_tokamak/cli.py`:
+  - Added `--torax-top-n`.
+- Updated tests:
+  - `tests/test_torax_adapter.py` now covers forced top-candidate TORAX execution without the env var.
+  - `tests/test_cli_smoke.py` now checks that `--torax-top-n` is exposed in CLI help.
+- Validation commands completed:
+  - Windows: `.venv\Scripts\python.exe -m pytest`
+    - Result: `28 passed`
+  - Windows: `.venv\Scripts\python.exe -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `python -m pytest`
+    - Result: `28 passed`
+  - WSL: `python -m ruff check src tests`
+    - Result: `All checks passed`
+  - WSL: `mini-tokamak verify`
+    - Result: `TORAX PASS` from the adapter probe.
+- Top-candidate TORAX execution smoke:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 3 --mode random --seed 43 --torax-top-n 1`
+  - Run ID: `20260616T073239Z-f9204678`
+  - Result: command completed successfully.
+  - Screening stage completed first, then a separate `TORAX transport pass` ran.
+  - Candidate results: 3 JSON result files.
+  - TORAX artifacts: 3 `torax_manifest.json`, 3 `torax_config.py`.
+  - TORAX NetCDF outputs: 1 `state_history_*.nc` for the top-ranked candidate only.
+  - TORAX solver status summary:
+    - 2 candidates: `NOT_EVALUATED`
+    - 1 candidate: `WARNING`, `execution_source=torax_top_n`, `top_candidate_rank=1`, stage `run_torax`
+  - Executed candidate output:
+    - Candidate: `7df722b7-899c-48e9-b5f7-ac9dd80ca807`
+    - Output file: `data/runs/20260616T073239Z-f9204678/external_solvers/torax/7df722b7-899c-48e9-b5f7-ac9dd80ca807/torax_output/state_history_20260616_033302.nc`
+    - Report summary values: `q95=12.2`, `fgw_line=0.207`, `P_SOL=29.2 MW`, `SOL heat load=17.2 MW/m2`, comparison `WARNING`
+  - Report summary verified in `data/reports/20260616T073239Z-f9204678/report.md`.
+- Default 100-candidate acceptance run after `--torax-top-n` implementation:
+  - Command: `mini-tokamak run --config configs/design_space.car_sized.yaml --n 100 --mode random`
+  - Run ID: `20260616T073331Z-7ee6b263`
+  - Result: command completed successfully in WSL.
+  - Candidate results: 100 JSON result files.
+  - TORAX artifacts: 100 `torax_manifest.json`, 100 `torax_config.py`.
+  - TORAX NetCDF outputs: 0, as expected when neither `--torax-top-n` nor `MINI_TOKAMAK_TORAX_EXECUTE=1` is used.
+  - TORAX solver status summary:
+    - 99 candidates: `NOT_EVALUATED`
+    - 1 candidate: `FAIL`, stage `geometry_precheck`
+  - CAD artifacts:
+    - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_cross_section.png`
+    - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_cross_section.svg`
+    - `data/cad/20260616T073331Z-7ee6b263/2abff7e3-7a23-493a-9aee-b7f915c641fa_plasma_proxy.step`
